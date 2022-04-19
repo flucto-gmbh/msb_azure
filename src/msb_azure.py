@@ -11,45 +11,48 @@ import json
 import os
 from socket import gethostname
 import sys
+import time
 import uuid
 
 messages_to_send = 10
 
-
-async def main():
+def create_client(verbose=False) -> IoTHubDeviceClient:
     # The connection string for a device should never be stored in code. For the sake of simplicity we're using an environment variable here.
     conn_str = os.getenv("IOTHUB_DEVICE_CONNECTION_STRING")
     if not conn_str:
         print(f'empty connection string environment variable! please make sure, the correct environment variable containing the connecition string has been set')
         sys.exit()
-
     # The client object is used to interact with your Azure IoT hub.
-    device_client = IoTHubDeviceClient.create_from_connection_string(conn_str)
-
+    # if the websockets flag is set to True, MGTT via websockets will be used
+    device_client = IoTHubDeviceClient.create_from_connection_string(conn_str, websockets=True)
     # Connect the client.
-    await device_client.connect()
+    # this can time out, so a time out exception must be catched. 
+    device_client.connect()
+    return device_client
 
-    async def send_test_message(i):
-        print(f"sending message #{i}")
-        msg = Message()
-        msg.data = json.dumps({'data1' : 1234, 'data2' : 1234})
-        msg.message_id = uuid.uuid4()
-        msg.correlation_id = ""
-        msg.custom_properties["msb-sn"] = f"{gethostname()}"
-        msg.content_encoding = "utf-8"
-        msg.content_type = "application/json"
-        await device_client.send_message(msg)
-        print("done sending message #" + str(i))
+def send_message(data : str, device_client : IoTHubDeviceClient, verbose=False):
+    msg = Message()
+    msg.data = data
+    msg.message_id = uuid.uuid4()
+    msg.correlation_id = ""
+    msg.custom_properties["msb-sn"] = f"{gethostname()}"
+    msg.content_encoding = "utf-8"
+    msg.content_type = "application/json"
+    device_client.send_message(msg)
 
-    # send `messages_to_send` messages in parallel
-    await asyncio.gather(*[send_test_message(i) for i in range(1, messages_to_send + 1)])
+def main():
+    device_client = create_client()
+
+    while True:
+        send_message(json.dumps({"a" : "b"}), device_client)
+        time.sleep(1)
 
     # Finally, shut down the client
-    await device_client.shutdown()
+    device_client.shutdown()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
 
     # If using Python 3.6 use the following code instead of asyncio.run(main()):
     # loop = asyncio.get_event_loop()
